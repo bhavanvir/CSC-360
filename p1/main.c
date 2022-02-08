@@ -28,16 +28,25 @@ int total_pro(node_t **head){
 }
 
 //Concatenate the background process commands to each node in the linked list if the process is a parent
-void background_pro(char **tokenized, node_t **head){
-	pid_t pid = fork();
+void background_pro(char **tokenized, node_t **head, int num_cmd){
+	char **shifted_tokenized = malloc(sizeof(char*)*num_cmd);
+	if (shifted_tokenized == NULL) perror("error");;
+
+	pid_t pid = fork();	
 
 	if(pid < 0)
 		perror("error");
-	else if(pid == 0)
-		execvp(tokenized[1], tokenized + 1);
-	else{
+	else if(pid == 0){
+		for(int i = 0; i < num_cmd - 1; i++){
+			shifted_tokenized[i] = malloc(sizeof(char)*strlen(tokenized[i]));
+			strcpy(shifted_tokenized[i], tokenized[i + 1]);
+		}
+	
+		shifted_tokenized[num_cmd - 1] = NULL;
+		execvp(shifted_tokenized[0], shifted_tokenized);
+	}else{
 		//Allocate memory for the new node that will be added to the linked list
-		node_t* new_node = (node_t*)malloc(sizeof(node_t));
+		node_t * new_node = (node_t*)malloc(sizeof(node_t));
 		
 		//Check to see if the new node was successfully created
 		if(new_node == NULL) perror("error");
@@ -61,7 +70,7 @@ void background_pro(char **tokenized, node_t **head){
 
 //Print the total number of background jobs by iterating on the non-null elements of the linked list 
 void background_list(node_t **head){
-	node_t* curr = *head;
+	node_t *curr = *head;
 
 	while(curr != NULL){
 		printf("%d: %s\n", curr->pid, curr->cmd);
@@ -73,7 +82,7 @@ void background_list(node_t **head){
 
 //Adapted from the tutorial slides: check to see if there are any child processes still executing in the background
 void check_pro(node_t **head){
-	node_t* curr = *head;
+	node_t *curr = *head;
 	
 	if(total_pro(&curr) > 0){
 		pid_t ter = waitpid(0, NULL, WNOHANG);
@@ -102,7 +111,7 @@ void change_dir(char **tokenized, int num_cmd){
 	else if(strcmp(tokenized[1], "../") == 0 || strcmp(tokenized[1], "..") == 0)
 		chdir("..");
 	else if(num_cmd > 2 && tokenized[2] != NULL)
-		perror("chdir");
+		perror("error");
 	else
 		chdir(tokenized[1]);
 }
@@ -112,7 +121,7 @@ void execute_cmd(char **tokenized){
 	pid_t pid = fork();
 
 	if(pid < 0)
-		perror("fork");
+		perror("error");
 	else if(pid > 0)
 		wait(NULL);
 	else
@@ -152,11 +161,11 @@ char **tokenize_str(char *cmd, int *num_cmd){
 
 //Concatenate the login, hostname and current working directory in a single string
 void fetch_info(char *buffer){
-	char hostname[1024];
-       gethostname(hostname, sizeof(hostname));	
+	char hostname[512];
+       	gethostname(hostname, sizeof(hostname));	
 		
-	char curr_dir[1024];
-	getcwd(curr_dir, sizeof(curr_dir));
+	char curr_dir[512];
+	getcwd(curr_dir, sizeof(curr_dir)); 
 
 	strcat(buffer, getlogin());
 	strcat(buffer, "@");
@@ -183,13 +192,13 @@ int main(){
 		check_pro(&head);
 		
 		//If the user enters no command, i.e. just pressing 'Enter', go to the next loop iteration  
-		if(num_cmd == 0) 
+		if(num_cmd == 0 || tokenized[0] == NULL) 
 			continue;
 		//Execute each command by comparing the first element of the tokenized array with the supported command
 		else if(strcmp(tokenized[0], "cd") == 0)
 			change_dir(tokenized, num_cmd);	
 		else if(strcmp(tokenized[0], "bg") == 0)
-			background_pro(tokenized, &head);
+			background_pro(tokenized, &head, num_cmd);
 		else if(strcmp(tokenized[0], "bglist") == 0)
 			background_list(&head);
 		else if(strcmp(tokenized[0], "exit") == 0)
