@@ -7,7 +7,7 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 
-//Adapted from the tutorial slides: linked list structure containing the pid, command and next node 
+//Adapted from the tutorial slides: linked list structure containing the pid, command and next node attributes
 typedef struct node_t {
 	pid_t pid;
 	char cmd[1024];
@@ -27,7 +27,7 @@ int total_pro(node_t **head){
 	return total;
 }
 
-//Concatenate the background process commands to each node in the linked list if the process is a parent
+//Concatenate the background process commands to a new node in the linked list, depending on whether its a child or parent
 void background_pro(char **tokenized, node_t **head, int num_cmd){
 	pid_t pid = fork();	
 
@@ -118,8 +118,9 @@ void change_dir(char **tokenized, int num_cmd){
 		chdir(getenv("HOME"));
 	else if(strcmp(tokenized[1], "../") == 0 || strcmp(tokenized[1], "..") == 0)
 		chdir("..");
+	//The "cd" command cannot have more than 2 arguments, so if there are more than 2, print an error message
 	else if(num_cmd > 2 && tokenized[2] != NULL)
-		perror("error");
+		perror("chdir() failed on tokenized");
 	else
 		chdir(tokenized[1]);
 }
@@ -147,7 +148,7 @@ char **tokenize_str(char *cmd, int *num_cmd){
 	int i = 0;
 	while(t != NULL){
 		if(i >= init_size){
-			//Allocate a temporary charater twice the inital size, in case the original array ran out of space
+			//Allocate a temporary character array twice the inital size, in case the original array ran out of space
 			init_size *= 2;
 			char **tmp = (char **)realloc(t_cmd, init_size * sizeof(char *));
 			
@@ -198,7 +199,7 @@ int main(){
 		
 		//Initialize the linked list structure by declaring the head node
 		node_t *head;
-		//Pass the the head of the linked list by reference
+		//Pass the the head of the linked list by reference to each supporting function
 		check_pro(&head);
 		
 		//If the user enters no command, i.e. just pressing 'Enter', go to the next loop iteration  
