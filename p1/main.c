@@ -29,28 +29,35 @@ int total_pro(node_t **head){
 
 //Concatenate the background process commands to each node in the linked list if the process is a parent
 void background_pro(char **tokenized, node_t **head, int num_cmd){
-	char **shifted_tokenized = malloc(sizeof(char*)*num_cmd);
-	if (shifted_tokenized == NULL) perror("error");;
-
 	pid_t pid = fork();	
 
 	if(pid < 0)
-		perror("error");
+		perror("fork() failed on pid");
 	else if(pid == 0){
+		//Allocate memory for a character array that is shifted over one space
+		char **shifted_tokenized = malloc(sizeof(char*) * num_cmd);
+
+		if(shifted_tokenized == NULL) perror("malloc() failed on shifted_tokenized");
+
 		for(int i = 0; i < num_cmd - 1; i++){
-			shifted_tokenized[i] = malloc(sizeof(char)*strlen(tokenized[i]));
+			//Allocate space for each index of the shifted character array
+			shifted_tokenized[i] = malloc(sizeof(char) * strlen(tokenized[i]));
+
+			if(shifted_tokenized[i] == NULL) perror("malloc() failed on shifted_tokenized[i]");
+				
 			strcpy(shifted_tokenized[i], tokenized[i + 1]);
 		}
 	
 		shifted_tokenized[num_cmd - 1] = NULL;
+		//Execute the file contained within the shifted tokenized character array
 		execvp(shifted_tokenized[0], shifted_tokenized);
 	}else{
-		//Allocate memory for the new node that will be added to the linked list
+		//Allocate memory for the new background process node
 		node_t * new_node = (node_t*)malloc(sizeof(node_t));
 		
-		//Check to see if the new node was successfully created
-		if(new_node == NULL) perror("error");
+		if(new_node == NULL) perror("malloc() failed on new_node");
 
+		//Initialize the command field of the new node with the null terminator
 		new_node->cmd[0] = '\0';
 		new_node->pid = pid;
 		
@@ -61,7 +68,8 @@ void background_pro(char **tokenized, node_t **head, int num_cmd){
 				strcat(new_node->cmd, " ");
 			}
 		}
-
+		
+		//Make the new node become the front of the linked list
 		new_node->next = *head;
 		*head = new_node;
 	}
@@ -121,11 +129,11 @@ void execute_cmd(char **tokenized){
 	pid_t pid = fork();
 
 	if(pid < 0)
-		perror("error");
+		perror("fork() failed on pid");
 	else if(pid > 0)
 		wait(NULL);
 	else
-		if(execvp(tokenized[0], tokenized) == -1) perror("error");	
+		if(execvp(tokenized[0], tokenized) == -1) perror("execvp() failed on tokenized");	
 }
 
 //Tokenize the user input, and return a dynamically allocated character array
@@ -143,8 +151,7 @@ char **tokenize_str(char *cmd, int *num_cmd){
 			init_size *= 2;
 			char **tmp = (char **)realloc(t_cmd, init_size * sizeof(char *));
 			
-			//Check to see if the temporary array was successfully created
-			if(tmp == NULL) perror("error");
+			if(tmp == NULL) perror("malloc() failed on tmp");
 
 			t_cmd = tmp;
 		}
@@ -178,10 +185,12 @@ void fetch_info(char *buffer){
 int main(){
 	while(1){
 		char buffer[512];
+		//Initialze the input buffer with the null terminator
 		buffer[0] = '\0';
 
 		fetch_info(buffer);
-
+		
+		//Have the CLI display the correct prompt
 		char *cmd = readline(buffer);	
 
 		int num_cmd = 0;
@@ -189,6 +198,7 @@ int main(){
 		
 		//Initialize the linked list structure by declaring the head node
 		node_t *head;
+		//Pass the the head of the linked list by reference
 		check_pro(&head);
 		
 		//If the user enters no command, i.e. just pressing 'Enter', go to the next loop iteration  
