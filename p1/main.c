@@ -118,11 +118,8 @@ void change_dir(char **tokenized, int num_cmd){
 		chdir(getenv("HOME"));
 	else if(strcmp(tokenized[1], "../") == 0 || strcmp(tokenized[1], "..") == 0)
 		chdir("..");
-	//The "cd" command cannot have more than 2 arguments, so if there are more than 2, print an error message
-	else if(num_cmd > 2 && tokenized[2] != NULL)
-		perror("chdir() failed on tokenized");
 	else
-		chdir(tokenized[1]);
+		if(chdir(tokenized[1]) == -1) perror("chdir() failed on tokenized");
 }
 
 //Execute commands that aren't directly supported in the main function
@@ -148,14 +145,15 @@ char **tokenize_str(char *cmd, int *num_cmd){
 	int i = 0;
 	while(t != NULL){
 		if(i >= init_size){
-			//Allocate a temporary character array twice the inital size, in case the original array ran out of space
 			init_size *= 2;
+			//Allocate a temporary character array twice the inital size, in case the original array ran out of space
 			char **tmp = (char **)realloc(t_cmd, init_size * sizeof(char *));
 			
 			if(tmp == NULL) perror("malloc() failed on tmp");
-
+			
 			t_cmd = tmp;
 		}
+		//Increment the character array index and have it contain the command token
 		t_cmd[i++] = t;
 		t = strtok(NULL, " ");
 
@@ -194,16 +192,17 @@ int main(){
 		//Have the CLI display the correct prompt
 		char *cmd = readline(buffer);	
 
+		//Have a variable that keeps track of the number of input commands
 		int num_cmd = 0;
 		char **tokenized = tokenize_str(cmd, &num_cmd);
 		
 		//Initialize the linked list structure by declaring the head node
 		node_t *head;
-		//Pass the the head of the linked list by reference to each supporting function
+		//Check to see if there are any background process still running, by passing reference to the head node
 		check_pro(&head);
 		
 		//If the user enters no command, i.e. just pressing 'Enter', go to the next loop iteration  
-		if(num_cmd == 0 || tokenized[0] == NULL) 
+		if(num_cmd == 0 && tokenized[0] == NULL) 
 			continue;
 		//Execute each command by comparing the first element of the tokenized array with the supported command
 		else if(strcmp(tokenized[0], "cd") == 0)
@@ -213,7 +212,7 @@ int main(){
 		else if(strcmp(tokenized[0], "bglist") == 0)
 			background_list(&head);
 		else if(strcmp(tokenized[0], "exit") == 0)
-			exit(1);
+			exit(0);
 		else 
 			execute_cmd(tokenized);
 	}
