@@ -14,20 +14,7 @@ typedef struct node_t {
 	struct node_t *next;
 } node_t;
 
-//Count the total number of background processes by iterating on the non-null nodes of the linked list
-int total_pro(node_t **head){
-	node_t* curr = *head;
-
-	int total = 0;
-	while(curr != NULL){
-		total++;
-		curr = curr->next;
-	}
-
-	return total;
-}
-
-//Concatenate the background process commands to a new node in the linked list, depending on whether its a child or parent
+//Concatenate the background process commands to a new node in the linked list, depending on whether it's a child or parent
 void background_pro(char **tokenized, node_t **head, int num_cmd){
 	pid_t pid = fork();	
 
@@ -44,16 +31,16 @@ void background_pro(char **tokenized, node_t **head, int num_cmd){
 			shifted_tokenized[i] = malloc(sizeof(char) * strlen(tokenized[i]));
 
 			if(shifted_tokenized[i] == NULL) perror("malloc() failed on shifted_tokenized[i]");
-				
-			strcpy(shifted_tokenized[i], tokenized[i + 1]);
+					
+			strncpy(shifted_tokenized[i], tokenized[i + 1], sizeof(tokenized[i + 1]));
 		}
 	
+		//Have the last index of the array be null, so execvp() can be called on the shifted character array
 		shifted_tokenized[num_cmd - 1] = NULL;
-		//Execute the file contained within the shifted tokenized character array
 		execvp(shifted_tokenized[0], shifted_tokenized);
 	}else{
 		//Allocate memory for the new background process node
-		node_t * new_node = (node_t*)malloc(sizeof(node_t));
+		node_t *new_node = (node_t*)malloc(sizeof(node_t));
 		
 		if(new_node == NULL) perror("malloc() failed on new_node");
 
@@ -72,11 +59,23 @@ void background_pro(char **tokenized, node_t **head, int num_cmd){
 		//Make the new node become the front of the linked list
 		new_node->next = *head;
 		*head = new_node;
-	}
-		
+	}	
 }
 
-//Print the total number of background jobs by iterating on the non-null elements of the linked list 
+//Count the total number of background processes by iterating on the non-null nodes of the linked list
+int total_pro(node_t **head){
+	node_t* curr = *head;
+
+	int total = 0;
+	while(curr != NULL){
+		total++;
+		curr = curr->next;
+	}
+
+	return total;
+}
+
+//Print the total number of background processes by iterating on the non-null nodes of the linked list 
 void background_list(node_t **head){
 	node_t *curr = *head;
 
@@ -122,7 +121,7 @@ void change_dir(char **tokenized, int num_cmd){
 		if(chdir(tokenized[1]) == -1) perror("chdir() failed on tokenized");
 }
 
-//Execute commands that aren't directly supported in the main function
+//Execute commands that aren't directly supported in the main function, i.e. 'ls'
 void execute_cmd(char **tokenized){
 	pid_t pid = fork();
 
@@ -165,10 +164,10 @@ char **tokenize_str(char *cmd, int *num_cmd){
 	return t_cmd;
 }
 
-//Concatenate the login, hostname and current working directory in a single string
+//Concatenate the login, hostname and current working directory to a single string
 void fetch_info(char *buffer){
 	char hostname[512];
-       	gethostname(hostname, sizeof(hostname));	
+	gethostname(hostname, sizeof(hostname));	
 		
 	char curr_dir[512];
 	getcwd(curr_dir, sizeof(curr_dir)); 
@@ -201,7 +200,7 @@ int main(){
 		//Check to see if there are any background process still running, by passing reference to the head node
 		check_pro(&head);
 		
-		//If the user enters no command, i.e. just pressing 'Enter', go to the next loop iteration  
+		//If the user enters no command, i.e. pressing 'Enter', go to the next loop iteration  
 		if(num_cmd == 0 && tokenized[0] == NULL) 
 			continue;
 		//Execute each command by comparing the first element of the tokenized array with the supported command
