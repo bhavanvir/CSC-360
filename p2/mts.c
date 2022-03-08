@@ -74,7 +74,7 @@ bool isEmpty(node_t **head)
     return (*head == NULL ? true : false);
 }
 
-void print_output(train_t *curr_train, int print_flag)
+void print_output(train_t *curr_train, char *print_flag)
 {
     if (clock_gettime(CLOCK_REALTIME, &stop) == -1)
         perror("Error at clock_gettime with stop");
@@ -85,11 +85,11 @@ void print_output(train_t *curr_train, int print_flag)
 
     char *direction = curr_train->direction == 'E' || curr_train->direction == 'e' ? "East" : "West";
 
-    if (print_flag == 1)
+    if (strcmp(print_flag, "READY") == 0)
         printf("%02d:%02d:%04.1f Train %2d is ready to go %4s\n", hours, minutes, accum, curr_train->train_number, direction);
-    else if (print_flag == 2)
+    else if (strcmp(print_flag, "ON") == 0)
         printf("%02d:%02d:%04.1f Train %2d is ON on the main track going %4s\n", hours, minutes, accum, curr_train->train_number, direction);
-    else if (print_flag == 3)
+    else if (strcmp(print_flag, "OFF") == 0)
         printf("%02d:%02d:%04.1f Train %2d is OFF the main track going %4s\n", hours, minutes, accum, curr_train->train_number, direction);
 }
 
@@ -101,20 +101,18 @@ void *load_train(void *arg)
 
     char *direction = curr_train->direction == 'E' || 'e' ? "East" : "West";
 
-    print_output(curr_train, 1);
+    print_output(curr_train, "READY");
 
     pthread_mutex_lock(&station_mutex);
     curr_train->direction == 'E' || curr_train->direction == 'e' ? push(&station_east, curr_train) : push(&station_west, curr_train);
     pthread_mutex_unlock(&station_mutex);
 
     pthread_cond_signal(&load_cond);
-    while (curr_train->ready != true)
-    {
-    };
+    while (curr_train->ready != true);
 
-    print_output(curr_train, 2);
+    print_output(curr_train, "ON");
     usleep(curr_train->crossing_time * 100000);
-    print_output(curr_train, 3);
+    print_output(curr_train, "OFF");
 
     pthread_cond_signal(&cross_cond);
 }
