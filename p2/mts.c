@@ -12,8 +12,6 @@ double accum;
 pthread_mutex_t station_mutex, track_mutex;
 pthread_cond_t load_cond, cross_cond;
 
-int total_trains, sent_east, sent_west = 0;
-
 typedef struct train_t
 {
     int train_number;
@@ -116,15 +114,15 @@ void *load_train(void *arg)
     print_output(curr_train, "ON");
     usleep(curr_train->crossing_time * 100000);
     print_output(curr_train, "OFF");
-    total_trains--;
 
     pthread_cond_signal(&cross_cond);
 }
 
-void send_train()
+void send_train(int total_trains)
 {
     char direction[1];
-    while (total_trains > 0)
+    int sent_east, sent_west = 0;
+    for (int i = total_trains - 1; i >= 0; i--)
     {
         pthread_mutex_lock(&track_mutex);
 
@@ -183,6 +181,7 @@ int main(int argc, char *argv[])
     if (clock_gettime(CLOCK_REALTIME, &start) == -1)
         perror("Error at clock_gettime with start");
 
+    int total_trains = 0;
     for (int c = getc(fp); c != EOF; c = getc(fp))
         if (c == '\n')
             total_trains++;
@@ -218,7 +217,7 @@ int main(int argc, char *argv[])
             perror("Error at train_thread[i]");
     }
 
-    send_train();
+    send_train(total_trains);
 
     for (int i = 0; i < total_trains; i++)
         pthread_join(train_thread[i], NULL);
