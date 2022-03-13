@@ -122,6 +122,7 @@ void *load_train(void *arg)
     // Sleep the program for the appropriate amount of time in seconds
     usleep(curr_train->loading_time * 100000);
 
+    // Print that the train is ready to go in the associated direction
     print_output(curr_train, "READY");
 
     // Lock the station mutex and push the current train to the appropriate east or west station
