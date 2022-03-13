@@ -35,6 +35,7 @@ typedef struct node_t
 node_t *station_east;
 node_t *station_west;
 
+// Push the appropriate train to the front of the queue based on it's priority
 void push(node_t **head, train_t *train_data)
 {
     node_t *front = *head;
@@ -51,33 +52,40 @@ void push(node_t **head, train_t *train_data)
         return;
     }
 
-    // If the loading times are the same for two trains, push the train that appears first in the input file to the front of the priority queue
+    // If the loading times are the same for two trains, push the train that appears before in the input file to the front of the priority queue
     if (tmp->train_data->loading_time == front->train_data->loading_time && tmp->train_data->train_number < front->train_data->train_number)
     {
+        // Set the new node to be the head of the linked list
         tmp->next = front;
         front = tmp;
     }
     else
     {
+        // If the loading times are not the same, continue until a train is found that has the same loading time, but appears before in the input file
         while (tmp->train_data->loading_time == front->next->train_data->loading_time && tmp->train_data->train_number < front->next->train_data->train_number)
+            // Set the node to be the head of the linked list
             front = front->next;
 
+        // If the above conditions are not meant, have the node come after the head of the linked list
         tmp->next = front->next;
         front->next = tmp;
     }
 }
 
-// Free memory associated with a certain node in the priority queue
+// Free memory associated with the desired node in the priority queue
 void pop(node_t **head)
 {
+    // Move the head pointer
     node_t *tmp = *head;
     *head = (*head)->next;
+    // Free the memory associated with the node
     free(tmp);
 }
 
 // If the priority queue is empty return true, if not return false
-bool isEmpty(node_t **head)
+bool is_empty(node_t **head)
 {
+    // If the head of the linked list is empty (NULL) return true, otherwise return false
     return (*head == NULL ? true : false);
 }
 
@@ -95,7 +103,7 @@ void print_output(train_t *curr_train, char *print_flag)
     // Set the direction string by checking the direction of the current train being interacted with
     char *direction = curr_train->direction == 'E' || curr_train->direction == 'e' ? "East" : "West";
 
-    // Compare the print flag to the READY, ON and OFF states
+    // Compare the print flag to the READY, ON and OFF state, and print the appropriate output
     if (strcmp(print_flag, "READY") == 0)
         printf("%02d:%02d:%04.1f Train %2d is ready to go %4s\n", hours, minutes, accum, curr_train->train_number, direction);
     else if (strcmp(print_flag, "ON") == 0)
@@ -121,22 +129,23 @@ void *load_train(void *arg)
     curr_train->direction == 'E' || curr_train->direction == 'e' ? push(&station_east, curr_train) : push(&station_west, curr_train);
     pthread_mutex_unlock(&station_mutex);
 
+    // Signal that the train has been loaded and is ready to be placed on the main track
     pthread_cond_signal(&load_cond);
     // Wait until the current train is ready to be placed on the track
-    while (curr_train->ready != true)
-        ;
+    while (curr_train->ready != true);
 
     print_output(curr_train, "ON");
     usleep(curr_train->crossing_time * 100000);
     print_output(curr_train, "OFF");
 
+    // Signal that the train is ready to cross the main track
     pthread_cond_signal(&cross_cond);
 }
 
-// Pop the train with the highest priority off the track
+// Pop the train with the highest priority from the appropriate station queue
 void send_train(int total_trains)
 {
-    // Directional character used to determine which train should be popped off the train
+    // Directional character used to determine which train should be popped from the station queue
     char direction[1];
     // Counter to track how many trains have been sent in each direction
     int sent_east, sent_west = 0;
@@ -146,11 +155,11 @@ void send_train(int total_trains)
         pthread_mutex_lock(&track_mutex);
 
         // If both east and west stations are empty, then wait until it is not
-        if (isEmpty(&station_east) == true && isEmpty(&station_west) == true)
+        if (is_empty(&station_east) == true && is_empty(&station_west) == true)
             pthread_cond_wait(&load_cond, &track_mutex);
 
         // If both stations or one of the stations are not empty, check the starvation case and set the priority direction accordingly
-        if (isEmpty(&station_east) == false && isEmpty(&station_west) == false)
+        if (is_empty(&station_east) == false && is_empty(&station_west) == false)
         {
             sent_east == 4 ? strncpy(direction, "W", 1) : strncpy(direction, "E", 1);
             sent_west == 4 ? strncpy(direction, "E", 1) : strncpy(direction, "E", 1);
@@ -158,12 +167,12 @@ void send_train(int total_trains)
             sent_west = sent_west == 4 ? 0 : sent_west;
             station_east->priority > station_west->priority ? strncpy(direction, "E", 1) : strncpy(direction, "W", 1);
         }
-        else if (isEmpty(&station_east) == false && isEmpty(&station_west) == true)
+        else if (is_empty(&station_east) == false && is_empty(&station_west) == true)
             strncpy(direction, "E", 1);
-        else if (isEmpty(&station_east) == true && isEmpty(&station_west) == false)
+        else if (is_empty(&station_east) == true && is_empty(&station_west) == false)
             strncpy(direction, "W", 1);
 
-        // Check the priority, increment the appropriate direction counter, set the train's ready state to true and pop it from the station queue
+        // Check the direction character, increment the appropriate direction counter, set the train's ready state to true and pop it from the station queue
         if (strcmp(direction, "E") == 0)
         {
             sent_east++;
@@ -182,6 +191,7 @@ void send_train(int total_trains)
             pthread_mutex_unlock(&station_mutex);
             sent_east = 0;
         }
+        // Wait for the crossing condition to be met
         pthread_cond_wait(&cross_cond, &track_mutex);
         pthread_mutex_unlock(&track_mutex);
     }
@@ -210,7 +220,7 @@ int main(int argc, char *argv[])
     for (int c = getc(fp); c != EOF; c = getc(fp))
         if (c == '\n')
             total_trains++;
-    // Rewind the file so that it can be read again
+    // Set the file pointer to the beginning, so that it can be read in-order again
     rewind(fp);
 
     // Allocate memory for all trains in the input file
@@ -227,22 +237,26 @@ int main(int argc, char *argv[])
         train[i].direction = col1[0];
         train[i].loading_time = atoi(col2);
         train[i].crossing_time = atoi(col3);
+        // Set the trains default ready status to false
         train[i].ready = false;
         // Increment the train number index
         i++;
     }
+    // Close the input file
     fclose(fp);
 
-    // Initialize a mutex for the station and track, and a condition variable for loading and crossing
+    // Initialize a mutex for the station and track
     pthread_mutex_init(&station_mutex, NULL);
     pthread_mutex_init(&track_mutex, NULL);
 
+    // Initialize a condition variable for loading and crossing
     pthread_cond_init(&load_cond, NULL);
     pthread_cond_init(&cross_cond, NULL);
 
+    // Initialize a thread for each of the lines read in the input file
     pthread_t train_thread[total_trains];
 
-    // Create a thread for each train and check whether an error is produced
+    // Create a thread for each train in the input file and check whether an error is produced
     for (int i = 0; i < total_trains; i++)
     {
         if (pthread_create(&train_thread[i], NULL, &load_train, (void *)&train[i]) != 0)
@@ -256,10 +270,11 @@ int main(int argc, char *argv[])
     for (int i = 0; i < total_trains; i++)
         pthread_join(train_thread[i], NULL);
 
-    // Destroy both mutexs and condition variables
+    // Destroy both mutexes variables
     pthread_mutex_destroy(&station_mutex);
     pthread_mutex_destroy(&track_mutex);
 
+    // Destroy both condition variables
     pthread_cond_destroy(&load_cond);
     pthread_cond_destroy(&cross_cond);
 
