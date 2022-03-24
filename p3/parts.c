@@ -47,6 +47,27 @@ struct __attribute__((__packed__)) dir_entry_t
     uint8_t unused[6];
 };
 
+void print_output(struct superblock_t *sb, int free, int reserved, int allocated, char *flag)
+{
+    if (strcmp(flag, "BLOCK") == 0)
+    {
+        printf("Super block information:\n");
+        printf("Block size: %d\n", htons(sb->block_size));
+        printf("Block count: %d\n", ntohl(sb->file_system_block_count));
+        printf("FAT starts: %d\n", ntohl(sb->fat_start_block));
+        printf("FAT blocks: %d\n", ntohl(sb->fat_block_count));
+        printf("Root directory start: %d\n", ntohl(sb->root_dir_start_block));
+        printf("Root directory blocks: %d\n\n", ntohl(sb->root_dir_block_count));
+    }
+    else if (strcmp(flag, "FAT") == 0)
+    {
+        printf("FAT information:\n");
+        printf("Free Blocks: %d\n", free);
+        printf("Reserved Blocks: %d\n", reserved);
+        printf("Allocated Blocks: %d\n", allocated);
+    }
+}
+
 void diskinfo(int argc, char *argv[])
 {
     if (argc < 2)
@@ -69,14 +90,6 @@ void diskinfo(int argc, char *argv[])
     struct superblock_t *sb;
     sb = (struct superblock_t *)p;
 
-    printf("Super block information:\n");
-    printf("Block size: %d\n", htons(sb->block_size));
-    printf("Block count: %d\n", ntohl(sb->file_system_block_count));
-    printf("FAT starts: %d\n", ntohl(sb->fat_start_block));
-    printf("FAT blocks: %d\n", ntohl(sb->fat_block_count));
-    printf("Root directory start: %d\n", ntohl(sb->root_dir_start_block));
-    printf("Root directory blocks: %d\n\n", ntohl(sb->root_dir_block_count));
-
     int start = ntohl(sb->fat_start_block) * htons(sb->block_size);
     int end = ntohl(sb->fat_block_count) * htons(sb->block_size);
     int free, reserved, allocated = 0;
@@ -90,18 +103,28 @@ void diskinfo(int argc, char *argv[])
                                      : allocated++;
     }
 
-    printf("FAT information:\n");
-    printf("Free Blocks: %d\n", free);
-    printf("Reserved Blocks: %d\n", reserved);
-    printf("Allocated Blocks: %d\n", allocated);
+    print_output(sb, free, reserved, allocated, "BLOCK");
+    print_output(sb, free, reserved, allocated, "FAT");
 
+    munmap(p, buf.st_size);
     close(fp);
 }
 
-void disklist(int argc, char *argv[]);
-void diskget(int argc, char *argv[]);
-void diskput(int argc, char *argv[]);
-void diskfix(int argc, char *argv[]);
+void disklist(int argc, char *argv[])
+{
+}
+
+void diskget(int argc, char *argv[])
+{
+}
+
+void diskput(int argc, char *argv[])
+{
+}
+
+void diskfix(int argc, char *argv[])
+{
+}
 
 int main(int argc, char *argv[])
 {
