@@ -10,6 +10,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdbool.h>
 
 // Super block: adapted from the tutorial slides
 struct __attribute__((__packed__)) superblock_t
@@ -47,25 +48,33 @@ struct __attribute__((__packed__)) dir_entry_t
     uint8_t unused[6];
 };
 
-void print_output(struct superblock_t *sb, int free, int reserved, int allocated, char *flag)
+char **tokenize_dir(char *dir, int *num_dir)
 {
-    if (strcmp(flag, "BLOCK") == 0)
+    size_t init_size = 2;
+
+    char *t = strtok(dir, "/");
+    char **t_dir = malloc(sizeof(char *));
+
+    int i = 0;
+    while (t != NULL)
     {
-        printf("Super block information:\n");
-        printf("Block size: %d\n", htons(sb->block_size));
-        printf("Block count: %d\n", ntohl(sb->file_system_block_count));
-        printf("FAT starts: %d\n", ntohl(sb->fat_start_block));
-        printf("FAT blocks: %d\n", ntohl(sb->fat_block_count));
-        printf("Root directory start: %d\n", ntohl(sb->root_dir_start_block));
-        printf("Root directory blocks: %d\n\n", ntohl(sb->root_dir_block_count));
+        if (i >= init_size)
+        {
+            init_size *= 2;
+            char **tmp = (char **)realloc(t_dir, init_size * sizeof(char *));
+
+            if (tmp == NULL)
+                perror("Error at tmp");
+
+            t_dir = tmp;
+        }
+        t_dir[i++] = t;
+        t = strtok(NULL, "/");
     }
-    else if (strcmp(flag, "FAT") == 0)
-    {
-        printf("FAT information:\n");
-        printf("Free Blocks: %d\n", free);
-        printf("Reserved Blocks: %d\n", reserved);
-        printf("Allocated Blocks: %d\n", allocated);
-    }
+    *num_dir = i;
+    t_dir[i] = NULL;
+
+    return t_dir;
 }
 
 void diskinfo(int argc, char *argv[])
@@ -76,19 +85,19 @@ void diskinfo(int argc, char *argv[])
         exit(1);
     }
 
-    int fp = open(argv[1], O_RDWR);
-    if (fp == -1)
-        perror("Error at fp");
+    int fd = open(argv[1], O_RDWR);
+    if (fd == -1)
+        perror("Error at fd");
 
-    struct stat buf;
-    fstat(fp, &buf);
+    struct stat buffer;
+    fstat(fd, &buffer);
 
-    void *p = mmap(NULL, buf.st_size, PROT_WRITE | PROT_READ, MAP_SHARED, fp, 0);
-    if (p == (void *)-1)
-        perror("Error at p");
+    void *address = mmap(NULL, buffer.st_size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
+    if (address == (void *)-1)
+        perror("Error at address");
 
     struct superblock_t *sb;
-    sb = (struct superblock_t *)p;
+    sb = (struct superblock_t *)address;
 
     int start = ntohl(sb->fat_start_block) * htons(sb->block_size);
     int end = ntohl(sb->fat_block_count) * htons(sb->block_size);
@@ -97,21 +106,102 @@ void diskinfo(int argc, char *argv[])
     for (int i = start; i < start + end; i += 4)
     {
         int val = 0;
-        memcpy(&val, p + i, 4);
+        memcpy(&val, address + i, 4);
         val = htonl(val);
         val == 0 ? free++ : val == 1 ? reserved++
                                      : allocated++;
     }
 
-    print_output(sb, free, reserved, allocated, "BLOCK");
-    print_output(sb, free, reserved, allocated, "FAT");
+    printf("Super block information:\n");
+    printf("Block size: %d\n", htons(sb->block_size));
+    printf("Block count: %d\n", ntohl(sb->file_system_block_count));
+    printf("FAT starts: %d\n", ntohl(sb->fat_start_block));
+    printf("FAT blocks: %d\n", ntohl(sb->fat_block_count));
+    printf("Root directory start: %d\n", ntohl(sb->root_dir_start_block));
+    printf("Root directory blocks: %d\n\n", ntohl(sb->root_dir_block_count));
 
-    munmap(p, buf.st_size);
-    close(fp);
+    printf("FAT information:\n");
+    printf("Free Blocks: %d\n", free);
+    printf("Reserved Blocks: %d\n", reserved);
+    printf("Allocated Blocks: %d\n", allocated);
+
+    munmap(address, buffer.st_size);
+    close(fd);
 }
 
-void disklist(int argc, char *argv[])
+void disklist(int argc, char **argv)
 {
+    if (argc < 2)
+    {
+        printf("Error: expected a disk image in the form *.img");
+        exit(1);
+    }
+
+    char **tokens = {'\0'};
+    int num_dir = 0;
+    if (argc == 3)
+        tokens = tokenize_dir(argv[2], &num_dir);
+
+    int fd = open(argv[1], O_RDWR);
+    if (fd == -1)
+        perror("Error at fd");
+
+    struct stat buffer;
+    fstat(fd, &buffer);
+
+    void *address = mmap(NULL, buffer.st_size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
+    if (address == (void *)-1)
+        perror("Error at address");
+
+    struct superblock_t *sb;
+    sb = (struct superblock_t *)address;
+
+    int size, start = 0;
+    size = htons(sb->block_size);
+    start = ntohl(sb->root_dir_start_block) * size;
+
+    struct dir_entry_t *rb;
+
+    int idx = 0;
+    for (int i = start; i < start + size; i += 64)
+    {
+        if (argc == 2)
+        {
+            for (int j = start; j < start + size; j += 64)
+            {
+                rb = (struct dir_entry_t *)(address + j);
+                if (ntohl(rb->size) == 0)
+                    continue;
+                printf("%c %10d %30s %4d/%02d/%02d %02d:%02d:%02d\n", rb->status == 3 ? 'F' : 'D', ntohl(rb->size), rb->filename, htons(rb->modify_time.year),
+                       rb->modify_time.month, rb->modify_time.day, rb->modify_time.hour, rb->modify_time.minute, rb->modify_time.second);
+            }
+            break;
+        }
+        else
+        {
+            rb = (struct dir_entry_t *)(address + i);
+            if (strcmp((const char *)rb->filename, tokens[idx]) == false)
+            {
+                idx++;
+                start = ntohl(rb->starting_block) * size;
+                if (idx == num_dir)
+                {
+                    for (int j = start; j < start + size; j += 64)
+                    {
+                        rb = (struct dir_entry_t *)(address + j);
+                        if (ntohl(rb->size) == 0)
+                            continue;
+                        printf("%c %10d %30s %4d/%02d/%02d %02d:%02d:%02d\n", rb->status == 3 ? 'F' : 'D', ntohl(rb->size), rb->filename, htons(rb->modify_time.year),
+                               rb->modify_time.month, rb->modify_time.day, rb->modify_time.hour, rb->modify_time.minute, rb->modify_time.second);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    munmap(address, buffer.st_size);
+    close(fd);
 }
 
 void diskget(int argc, char *argv[])
