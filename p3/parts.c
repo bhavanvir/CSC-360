@@ -133,7 +133,7 @@ void disklist(int argc, char **argv)
 {
     if (argc < 2)
     {
-        printf("Error: expected a disk image in the form *.img");
+        printf("Error: expected a disk image directory\n");
         exit(1);
     }
 
@@ -156,45 +156,48 @@ void disklist(int argc, char **argv)
     struct superblock_t *sb;
     sb = (struct superblock_t *)address;
 
-    int size, start = 0;
-    size = htons(sb->block_size);
-    start = ntohl(sb->root_dir_start_block) * size;
+    int size = htons(sb->block_size);
+    int start = ntohl(sb->root_dir_start_block) * size;
 
     struct dir_entry_t *rb;
 
     int idx = 0;
-    for (int i = start; i < start + size; i += 64)
+
+    for (;;)
     {
-        if (argc == 2)
+        for (int i = start; i < start + size; i += 64)
         {
-            for (int j = start; j < start + size; j += 64)
+            if (argc == 2)
             {
-                rb = (struct dir_entry_t *)(address + j);
-                if (ntohl(rb->size) == 0)
-                    continue;
-                printf("%c %10d %30s %4d/%02d/%02d %02d:%02d:%02d\n", rb->status == 3 ? 'F' : 'D', ntohl(rb->size), rb->filename, htons(rb->modify_time.year),
-                       rb->modify_time.month, rb->modify_time.day, rb->modify_time.hour, rb->modify_time.minute, rb->modify_time.second);
-            }
-            break;
-        }
-        else
-        {
-            rb = (struct dir_entry_t *)(address + i);
-            if (strcmp((const char *)rb->filename, tokens[idx]) == false)
-            {
-                idx++;
-                start = ntohl(rb->starting_block) * size;
-                if (idx == num_dir)
+                for (int j = start; j < start + size; j += 64)
                 {
-                    for (int j = start; j < start + size; j += 64)
+                    rb = (struct dir_entry_t *)(address + j);
+                    if (ntohl(rb->size) == 0)
+                        continue;
+                    printf("%c %10d %30s %4d/%02d/%02d %02d:%02d:%02d\n", rb->status == 3 ? 'F' : 'D', ntohl(rb->size), rb->filename, htons(rb->modify_time.year),
+                           rb->modify_time.month, rb->modify_time.day, rb->modify_time.hour, rb->modify_time.minute, rb->modify_time.second);
+                }
+                return;
+            }
+            else
+            {
+                rb = (struct dir_entry_t *)(address + i);
+                if (strcmp((const char *)rb->filename, tokens[idx]) == false)
+                {
+                    idx++;
+                    start = ntohl(rb->starting_block) * size;
+                    if (idx == num_dir)
                     {
-                        rb = (struct dir_entry_t *)(address + j);
-                        if (ntohl(rb->size) == 0)
-                            continue;
-                        printf("%c %10d %30s %4d/%02d/%02d %02d:%02d:%02d\n", rb->status == 3 ? 'F' : 'D', ntohl(rb->size), rb->filename, htons(rb->modify_time.year),
-                               rb->modify_time.month, rb->modify_time.day, rb->modify_time.hour, rb->modify_time.minute, rb->modify_time.second);
+                        for (int j = start; j < start + size; j += 64)
+                        {
+                            rb = (struct dir_entry_t *)(address + j);
+                            if (ntohl(rb->size) == 0)
+                                continue;
+                            printf("%c %10d %30s %4d/%02d/%02d %02d:%02d:%02d\n", rb->status == 3 ? 'F' : 'D', ntohl(rb->size), rb->filename, htons(rb->modify_time.year),
+                                   rb->modify_time.month, rb->modify_time.day, rb->modify_time.hour, rb->modify_time.minute, rb->modify_time.second);
+                        }
+                        return;
                     }
-                    break;
                 }
             }
         }
@@ -206,6 +209,70 @@ void disklist(int argc, char **argv)
 
 void diskget(int argc, char *argv[])
 {
+    if (argv[2] == NULL || argv[3] == NULL)
+    {
+        printf("Error: too few arguments\n");
+        exit(1);
+    }
+
+    char **tokens = {'\0'};
+    int num_dir = 0;
+    tokens = tokenize_dir(argv[2], &num_dir);
+
+    int fd = open(argv[1], O_RDWR);
+    if (fd == -1)
+        perror("Error at fd");
+
+    struct stat buffer;
+    fstat(fd, &buffer);
+
+    void *address = mmap(NULL, buffer.st_size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
+    if (address == (void *)-1)
+        perror("Error at address");
+
+    struct superblock_t *sb;
+    sb = (struct superblock_t *)address;
+
+    int size = htons(sb->block_size);
+    int start = ntohl(sb->root_dir_start_block) * size;
+
+    struct dir_entry_t *rb;
+
+    int idx = 0;
+
+    for (;;)
+    {
+        for (int i = start; i < start + size; i += 64)
+        {
+            rb = (struct dir_entry_t *)(address + i);
+            if (strcmp((const char *)rb->filename, tokens[idx]) == false)
+            {
+                idx++;
+                start = ntohl(rb->starting_block) * size;
+                if (idx == num_dir)
+                {
+                    for (int j = start; j < start + size; j += 64)
+                    {
+                        rb = (struct dir_entry_t *)(address + start);
+                        FILE *out = fopen(argv[3], "w");
+                        fwrite(rb->filename, size, 1, out);
+                        fclose(out);
+                        break;
+                    }
+                    return;
+                }
+                break;
+            }
+            if (rb->status != 3)
+            {
+                printf("Error: file not found\n");
+                exit(1);
+            }
+        }
+    }
+
+    munmap(address, buffer.st_size);
+    close(fd);
 }
 
 void diskput(int argc, char *argv[])
