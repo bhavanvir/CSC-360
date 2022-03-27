@@ -92,7 +92,7 @@ void diskinfo(int argc, char *argv[])
     struct stat buffer;
     fstat(fd, &buffer);
 
-    void *address = mmap(NULL, buffer.st_size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
+    void *address = mmap(NULL, buffer.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (address == (void *)-1)
         perror("Error at address");
 
@@ -149,7 +149,7 @@ void disklist(int argc, char **argv)
     struct stat buffer;
     fstat(fd, &buffer);
 
-    void *address = mmap(NULL, buffer.st_size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
+    void *address = mmap(NULL, buffer.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (address == (void *)-1)
         perror("Error at address");
 
@@ -226,7 +226,7 @@ void diskget(int argc, char *argv[])
     struct stat buffer;
     fstat(fd, &buffer);
 
-    void *address = mmap(NULL, buffer.st_size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
+    void *address = mmap(NULL, buffer.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (address == (void *)-1)
         perror("Error at address");
 
