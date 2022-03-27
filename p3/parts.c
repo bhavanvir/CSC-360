@@ -240,34 +240,31 @@ void diskget(int argc, char *argv[])
 
     int idx = 0;
 
-    for (;;)
+    for (int i = start; i < start + size; i += 64)
     {
-        for (int i = start; i < start + size; i += 64)
+        rb = (struct dir_entry_t *)(address + i);
+        if (strcmp((const char *)rb->filename, tokens[idx]) == false)
         {
-            rb = (struct dir_entry_t *)(address + i);
-            if (strcmp((const char *)rb->filename, tokens[idx]) == false)
+            idx++;
+            start = ntohl(rb->starting_block) * size;
+            if (idx == num_dir)
             {
-                idx++;
-                start = ntohl(rb->starting_block) * size;
-                if (idx == num_dir)
+                for (int j = start; j < start + size; j += 64)
                 {
-                    for (int j = start; j < start + size; j += 64)
-                    {
-                        rb = (struct dir_entry_t *)(address + start);
-                        FILE *out = fopen(argv[3], "w");
-                        fwrite(rb->filename, size, 1, out);
-                        fclose(out);
-                        break;
-                    }
-                    return;
+                    rb = (struct dir_entry_t *)(address + j);
+                    FILE *out = fopen(argv[3], "w");
+                    fwrite(rb, size, 1, out);
+                    fclose(out);
+                    break;
                 }
-                break;
+                return;
             }
-            if (rb->status != 3)
-            {
-                printf("Error: file not found\n");
-                exit(1);
-            }
+            break;
+        }
+        if (rb->status != 3)
+        {
+            printf("Error: file not found\n");
+            exit(1);
         }
     }
 
