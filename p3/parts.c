@@ -215,16 +215,15 @@ void diskget(int argc, char *argv[])
         exit(1);
     }
 
-    char **tokens = {'\0'};
-    int num_dir = 0;
-    tokens = tokenize_dir(argv[2], &num_dir);
-
     int fd = open(argv[1], O_RDWR);
     if (fd == -1)
         perror("Error at fd");
 
     struct stat buffer;
     fstat(fd, &buffer);
+
+    char file_data[1000];
+    strcpy(file_data, argv[2]);
 
     void *address = mmap(NULL, buffer.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (address == (void *)-1)
@@ -234,38 +233,80 @@ void diskget(int argc, char *argv[])
     sb = (struct superblock_t *)address;
 
     int size = htons(sb->block_size);
-    int start = ntohl(sb->root_dir_start_block) * size;
+    int start = htonl(sb->root_dir_start_block) * size;
+    void *file = mmap(NULL, htonl(sb->file_system_block_count) * size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
-    struct dir_entry_t *rb;
+    int fssize;
+    char stat;
+
+    bool flag = true;
 
     int idx = 0;
-    for (int i = start; i < start + size; i += 64)
+    for (int i = 0; i < start; i += 64)
     {
-        rb = (struct dir_entry_t *)(address + i);
-        if (strcmp((const char *)rb->filename, tokens[idx]) == false && ntohl(rb->size) != 0)
+        memcpy(&stat, file + start + i, 1);
+
+        char tmp[1000];
+        memcpy(&fssize, file + start + i + 9, 4);
+        fssize = ntohl(fssize);
+        for (int name_count = 27; name_count < 54; name_count++)
         {
+            memcpy(&stat, file + start + i + name_count, 1);
+            tmp[idx] = stat;
             idx++;
-            start = ntohl(rb->starting_block) * size;
-            if (idx == num_dir)
-            {
-                for (int j = start; j < start * size; j += 64)
-                {
-                    rb = (struct dir_entry_t *)(address + j);
-                    FILE *out = fopen(argv[3], "w");
-                    fwrite(rb, size, 1, out);
-                    fclose(out);
-                    break;
-                }
-                return;
-            }
-            break;
         }
-        if (rb->status != 3)
+        idx = 0;
+
+        if (strcmp(tmp, file_data) == 0)
         {
-            printf("Error: file not found\n");
-            exit(1);
+            flag = false;
+
+            FILE *out = fopen(argv[3], "w");
+
+            memcpy(&fssize, file + start + i + 5, 4);
+            fssize = ntohl(fssize);
+
+            memcpy(&fssize, file + start + i + 9, 4);
+            fssize = ntohl(fssize);
+            int filesize = fssize;
+
+            memcpy(&fssize, file + start + i + 1, 4);
+            fssize = ntohl(fssize);
+
+            char file_buffer;
+            while (fssize != -1)
+            {
+
+                if (filesize > size)
+                {
+                    filesize -= size;
+                    for (int i = 0; i < size; i++)
+                    {
+                        memcpy(&file_buffer, file + size * fssize + i, 1);
+                        fwrite(&file_buffer, sizeof(char), 1, out);
+                    }
+                }
+                else
+                {
+                    for (int i = 0; i < filesize; i++)
+                    {
+                        memcpy(&file_buffer, file + size * fssize + i, 1);
+                        fwrite(&file_buffer, sizeof(char), 1, out);
+                    }
+                }
+
+                memcpy(&fssize, file + htonl(sb->fat_start_block) * size + fssize * 4, 4);
+                fssize = ntohl(fssize);
+            }
         }
     }
+    if (flag == true)
+    {
+        printf("Error: file not found\n");
+        exit(1);
+    }
+    else
+        printf("Success: found %s in %s\n", argv[2], argv[1]);
 
     munmap(address, buffer.st_size);
     close(fd);
