@@ -239,17 +239,16 @@ void diskget(int argc, char *argv[])
     struct dir_entry_t *rb;
 
     int idx = 0;
-
     for (int i = start; i < start + size; i += 64)
     {
         rb = (struct dir_entry_t *)(address + i);
-        if (strcmp((const char *)rb->filename, tokens[idx]) == false)
+        if (strcmp((const char *)rb->filename, tokens[idx]) == false && ntohl(rb->size) != 0)
         {
             idx++;
             start = ntohl(rb->starting_block) * size;
             if (idx == num_dir)
             {
-                for (int j = start; j < start + size; j += 64)
+                for (int j = start; j < start * size; j += 64)
                 {
                     rb = (struct dir_entry_t *)(address + j);
                     FILE *out = fopen(argv[3], "w");
@@ -278,6 +277,7 @@ void diskput(int argc, char *argv[])
 
 void diskfix(int argc, char *argv[])
 {
+    printf("Not completed\n");
 }
 
 int main(int argc, char *argv[])
