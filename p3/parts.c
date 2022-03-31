@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <sys/stat.h>
@@ -47,35 +48,6 @@ struct __attribute__((__packed__)) dir_entry_t
     uint8_t filename[31];
     uint8_t unused[6];
 };
-
-char **tokenize_dir(char *dir, int *num_dir)
-{
-    size_t init_size = 2;
-
-    char *t = strtok(dir, "/");
-    char **t_dir = malloc(sizeof(char *));
-
-    int i = 0;
-    while (t != NULL)
-    {
-        if (i >= init_size)
-        {
-            init_size *= 2;
-            char **tmp = (char **)realloc(t_dir, init_size * sizeof(char *));
-
-            if (tmp == NULL)
-                perror("Error at tmp");
-
-            t_dir = tmp;
-        }
-        t_dir[i++] = t;
-        t = strtok(NULL, "/");
-    }
-    *num_dir = i;
-    t_dir[i] = NULL;
-
-    return t_dir;
-}
 
 void diskinfo(int argc, char *argv[])
 {
@@ -131,16 +103,11 @@ void diskinfo(int argc, char *argv[])
 
 void disklist(int argc, char **argv)
 {
-    if (argc < 2)
+    if (argc < 3 || argc > 3)
     {
         printf("Error: expected a disk image directory\n");
         exit(1);
     }
-
-    char **tokens = {'\0'};
-    int num_dir = 0;
-    if (argc == 3)
-        tokens = tokenize_dir(argv[2], &num_dir);
 
     int fd = open(argv[1], O_RDWR);
     if (fd == -1)
@@ -161,46 +128,17 @@ void disklist(int argc, char **argv)
 
     struct dir_entry_t *rb;
 
-    int idx = 0;
-
-    for (;;)
+    for (int i = start; i < start + size; i += 64)
     {
-        for (int i = start; i < start + size; i += 64)
+        for (int j = start; j < start + size; j += 64)
         {
-            if (argc == 2)
-            {
-                for (int j = start; j < start + size; j += 64)
-                {
-                    rb = (struct dir_entry_t *)(address + j);
-                    if (ntohl(rb->size) == 0)
-                        continue;
-                    printf("%c %10d %30s %4d/%02d/%02d %02d:%02d:%02d\n", rb->status == 3 ? 'F' : 'D', ntohl(rb->size), rb->filename, htons(rb->modify_time.year),
-                           rb->modify_time.month, rb->modify_time.day, rb->modify_time.hour, rb->modify_time.minute, rb->modify_time.second);
-                }
-                return;
-            }
-            else
-            {
-                rb = (struct dir_entry_t *)(address + i);
-                if (strcmp((const char *)rb->filename, tokens[idx]) == false)
-                {
-                    idx++;
-                    start = ntohl(rb->starting_block) * size;
-                    if (idx == num_dir)
-                    {
-                        for (int j = start; j < start + size; j += 64)
-                        {
-                            rb = (struct dir_entry_t *)(address + j);
-                            if (ntohl(rb->size) == 0)
-                                continue;
-                            printf("%c %10d %30s %4d/%02d/%02d %02d:%02d:%02d\n", rb->status == 3 ? 'F' : 'D', ntohl(rb->size), rb->filename, htons(rb->modify_time.year),
-                                   rb->modify_time.month, rb->modify_time.day, rb->modify_time.hour, rb->modify_time.minute, rb->modify_time.second);
-                        }
-                        return;
-                    }
-                }
-            }
+            rb = (struct dir_entry_t *)(address + j);
+            if (ntohl(rb->size) == 0)
+                continue;
+            printf("%c %10d %30s %4d/%02d/%02d %02d:%02d:%02d\n", rb->status == 3 ? 'F' : 'D', ntohl(rb->size), rb->filename, htons(rb->modify_time.year),
+                   rb->modify_time.month, rb->modify_time.day, rb->modify_time.hour, rb->modify_time.minute, rb->modify_time.second);
         }
+        return;
     }
 
     munmap(address, buffer.st_size);
@@ -222,8 +160,11 @@ void diskget(int argc, char *argv[])
     struct stat buffer;
     fstat(fd, &buffer);
 
+    char *file_name = argv[2];
+    memmove(&file_name[0], &file_name[1], strlen(file_name));
+
     char file_data[1000];
-    strcpy(file_data, argv[2]);
+    strcpy(file_data, file_name);
 
     void *address = mmap(NULL, buffer.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (address == (void *)-1)
@@ -236,10 +177,9 @@ void diskget(int argc, char *argv[])
     int start = htonl(sb->root_dir_start_block) * size;
     void *file = mmap(NULL, htonl(sb->file_system_block_count) * size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
-    int fssize;
+    int fs;
     char stat;
-
-    bool flag = true;
+    bool file_found = false;
 
     int idx = 0;
     for (int i = 0; i < start; i += 64)
@@ -247,8 +187,8 @@ void diskget(int argc, char *argv[])
         memcpy(&stat, file + start + i, 1);
 
         char tmp[1000];
-        memcpy(&fssize, file + start + i + 9, 4);
-        fssize = ntohl(fssize);
+        memcpy(&fs, file + start + i + 9, 4);
+        fs = ntohl(fs);
         for (int name_count = 27; name_count < 54; name_count++)
         {
             memcpy(&stat, file + start + i + name_count, 1);
@@ -259,48 +199,45 @@ void diskget(int argc, char *argv[])
 
         if (strcmp(tmp, file_data) == 0)
         {
-            flag = false;
+            file_found = true;
 
             FILE *out = fopen(argv[3], "w");
 
-            memcpy(&fssize, file + start + i + 5, 4);
-            fssize = ntohl(fssize);
-
-            memcpy(&fssize, file + start + i + 9, 4);
-            fssize = ntohl(fssize);
-            int filesize = fssize;
-
-            memcpy(&fssize, file + start + i + 1, 4);
-            fssize = ntohl(fssize);
+            memcpy(&fs, file + start + i + 5, 4);
+            fs = ntohl(fs);
+            memcpy(&fs, file + start + i + 9, 4);
+            fs = ntohl(fs);
+            int file_size = fs;
+            memcpy(&fs, file + start + i + 1, 4);
+            fs = ntohl(fs);
 
             char file_buffer;
-            while (fssize != -1)
+            while (fs != -1)
             {
-
-                if (filesize > size)
+                if (file_size > size)
                 {
-                    filesize -= size;
+                    file_size -= size;
                     for (int i = 0; i < size; i++)
                     {
-                        memcpy(&file_buffer, file + size * fssize + i, 1);
+                        memcpy(&file_buffer, file + size * fs + i, 1);
                         fwrite(&file_buffer, sizeof(char), 1, out);
                     }
                 }
                 else
                 {
-                    for (int i = 0; i < filesize; i++)
+                    for (int i = 0; i < file_size; i++)
                     {
-                        memcpy(&file_buffer, file + size * fssize + i, 1);
+                        memcpy(&file_buffer, file + size * fs + i, 1);
                         fwrite(&file_buffer, sizeof(char), 1, out);
                     }
                 }
 
-                memcpy(&fssize, file + htonl(sb->fat_start_block) * size + fssize * 4, 4);
-                fssize = ntohl(fssize);
+                memcpy(&fs, file + htonl(sb->fat_start_block) * size + fs * 4, 4);
+                fs = ntohl(fs);
             }
         }
     }
-    if (flag == true)
+    if (file_found == false)
     {
         printf("Error: file not found\n");
         exit(1);
