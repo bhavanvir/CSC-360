@@ -130,16 +130,13 @@ void disklist(int argc, char **argv)
 
     for (int i = start; i < start + size; i += 64)
     {
-        for (int j = start; j < start + size; j += 64)
-        {
-            rb = (struct dir_entry_t *)(address + j);
-            if (ntohl(rb->size) == 0)
-                continue;
-            printf("%c %10d %30s %4d/%02d/%02d %02d:%02d:%02d\n", rb->status == 3 ? 'F' : 'D', ntohl(rb->size), rb->filename, htons(rb->modify_time.year),
-                   rb->modify_time.month, rb->modify_time.day, rb->modify_time.hour, rb->modify_time.minute, rb->modify_time.second);
-        }
-        return;
+        rb = (struct dir_entry_t *)(address + i);
+        if (ntohl(rb->size) == 0)
+            continue;
+        printf("%c %10d %30s %4d/%02d/%02d %02d:%02d:%02d\n", rb->status == 3 ? 'F' : 'D', ntohl(rb->size), rb->filename, htons(rb->modify_time.year),
+               rb->modify_time.month, rb->modify_time.day, rb->modify_time.hour, rb->modify_time.minute, rb->modify_time.second);
     }
+    return;
 
     munmap(address, buffer.st_size);
     close(fd);
