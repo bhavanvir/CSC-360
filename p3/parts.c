@@ -51,23 +51,28 @@ struct __attribute__((__packed__)) dir_entry_t
 
 void diskinfo(int argc, char *argv[])
 {
+    // Check if the user input is valid
     if (argc != 2)
     {
         printf("Expected: ./diskinfo <disk image>\n");
         exit(1);
     }
 
+    // Open the disk image for reading and writing
     int fd = open(argv[1], O_RDWR);
     if (fd == -1)
         perror("Error at fd");
 
+    // Return information about the disk image
     struct stat buffer;
     fstat(fd, &buffer);
 
+    // Create a new mapping in the virtual address space
     void *address = mmap(NULL, buffer.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (address == (void *)-1)
         perror("Error at address");
 
+    // Initialize a new super block structure with the mapping of the address space
     struct superblock_t *sb;
     sb = (struct superblock_t *)address;
 
@@ -110,7 +115,7 @@ void diskinfo(int argc, char *argv[])
 
 void disklist(int argc, char **argv)
 {
-    if (argc != 3)
+    if (argc != 3 || strcmp(argv[2], "/") != false)
     {
         printf("Expected: ./disklist <disk image> /\n");
         exit(1);
@@ -168,9 +173,18 @@ void diskget(int argc, char *argv[])
     struct stat buffer;
     fstat(fd, &buffer);
 
+    // Grab the name of the file and strip the "/" character from the input
     char *file_name = argv[2];
+    char *last_arg = argv[3];
+    // If there is no "/" character in the appropriate position, exit in error and notify the user
+    if (file_name[0] != 47 || last_arg[0] == 47)
+    {
+        printf("Expected: ./diskget <disk image> /<disk file> <local file>\n");
+        exit(1);
+    }
     memmove(&file_name[0], &file_name[1], strlen(file_name));
 
+    // Initialize a buffer with the maximum amount of readable information
     char file_data[1000];
     strcpy(file_data, file_name);
 
@@ -281,7 +295,7 @@ void diskput(int argc, char *argv[])
 {
     if (argc != 4)
     {
-        printf("Expected: ./diskput <disk image> <local file> /<diskfile>\n");
+        printf("Expected: ./diskput <disk image> <local file> /<disk file>\n");
         exit(1);
     }
 
@@ -303,6 +317,11 @@ void diskput(int argc, char *argv[])
     fstat(f_tu, &buffer_tu);
 
     char *file_name = argv[3];
+    if (file_name[0] != 47)
+    {
+        printf("Expected: ./diskput <disk image> <local file> /<disk file>\n");
+        exit(1);
+    }
     memmove(&file_name[0], &file_name[1], strlen(file_name));
     int file_size = buffer_tu.st_size;
 
@@ -385,14 +404,12 @@ void diskput(int argc, char *argv[])
             char buffer_time[10];
             int time;
 
+            // Set the added file in the disk image as "F" for the type
             memcpy(address + i, &status, 1);
 
-            // Reinitialize the starting index, needed memory, and file size variables
+            // Set the attributes for the file added in the disk image
             starting_idx = ntohl(starting_idx);
             memcpy(address + i + 1, &starting_idx, 4);
-
-            need = htonl(need);
-            memcpy(address + i + 5, &need, 4);
 
             file_size = htonl(file_size);
             memcpy(address + i + 9, &file_size, 4);
@@ -400,40 +417,34 @@ void diskput(int argc, char *argv[])
             // Get the current year
             strftime(buffer_time, sizeof(buffer_time), "%Y", info);
             sscanf(buffer_time, "%d", &time);
+            // Convert the unsigned short interger to a network byte
             time = htons(time);
             memcpy(address + i + 20, &time, 2);
-            memcpy(address + i + 13, &time, 2);
 
             // Get the current month
             strftime(buffer_time, sizeof(buffer_time), "%m", info);
             sscanf(buffer_time, "%d", &time);
-
             memcpy(address + i + 22, &time, 1);
-            memcpy(address + i + 15, &time, 1);
 
             // Get the current day
             strftime(buffer_time, sizeof(buffer_time), "%d", info);
             sscanf(buffer_time, "%d", &time);
             memcpy(address + i + 23, &time, 1);
-            memcpy(address + i + 16, &time, 1);
 
             // Get the current hour
             strftime(buffer_time, sizeof(buffer_time), "%H", info);
             sscanf(buffer_time, "%d", &time);
             memcpy(address + i + 24, &time, 1);
-            memcpy(address + i + 17, &time, 1);
 
             // Get the current month
             strftime(buffer_time, sizeof(buffer_time), "%M", info);
             sscanf(buffer_time, "%d", &time);
             memcpy(address + i + 25, &time, 1);
-            memcpy(address + i + 18, &time, 1);
 
             // Get the current seconds
             strftime(buffer_time, sizeof(buffer_time), "%S", info);
             sscanf(buffer_time, "%d", &time);
             memcpy(address + i + 26, &time, 1);
-            memcpy(address + i + 19, &time, 1);
 
             // Set the desired file name in the disk image
             strncpy(address + i + 27, file_name, 31);
